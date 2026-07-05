@@ -3,34 +3,40 @@ import hmac
 import hashlib
 import base64
 import requests
-import pandas as pd
 import json
+import time
 from datetime import datetime
 from openai import OpenAI
 
-# ==================== 配置区 ====================
-PASSPHRASE = "Xzj620018#"
-API_KEY = "837c294f-3c88-49c2-9743-20966918e82c"
-API_SECRET = "9A2845F8B1351F8AC537A1BC926F1B5F"
+# ==================== 配置区（从环境变量读取） ====================
+PASSPHRASE = os.getenv("OKX_PASSPHRASE", "")
+API_KEY = os.getenv("OKX_API_KEY", "")
+API_SECRET = os.getenv("OKX_SECRET", "")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
 BASE_URL = "https://www.okx.com"
-LOG_DIR = r"C:\Users\sandy\trading_logs"
+LOG_DIR = "/app/logs"  # Linux 容器兼容路径
 os.makedirs(LOG_DIR, exist_ok=True)
 
-log_file = f"{LOG_DIR}\\trading_log_{datetime.now().strftime('%Y-%m-%d')}.txt"
+log_file = f"{LOG_DIR}/trading_log_{datetime.now().strftime('%Y-%m-%d')}.txt"
 
-client = OpenAI(
-    api_key="sk-3275dcead21d44d1ad128331d7a26b8e",
-    base_url="https://api.deepseek.com/v1"
-)
+# DeepSeek 客户端初始化
+if DEEPSEEK_API_KEY:
+    client = OpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com/v1"
+    )
+    print("✅ DEEPSEEK_API_KEY 配置状态: 已设置")
+else:
+    client = None
+    print("⚠️ DEEPSEEK_API_KEY 配置状态: 未设置（简化版运行）")
 
 # ==================== 工具函数 ====================
 def write_log(text):
     content = f"[{datetime.now().strftime('%H:%M:%S')}] {text}"
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(content + "\n")
-    # 只打印到日志文件，不在控制台重复打印
-    # print(content)  # 已注释，避免重复
+    print(content)
 
 def get_okx_signature(timestamp, method, path, body="", secret=API_SECRET):
     if isinstance(body, dict):
@@ -64,7 +70,7 @@ def okx_api(method, path, body=None):
         write_log(f"API请求错误: {e}")
         return {"code": "-1", "msg": str(e)}
 
-# ==================== 任意交易对支持 ====================
+# ==================== 交易对支持 ====================
 def get_all_trading_pairs():
     try:
         data = okx_api("GET", "/api/v5/public/instruments", {"instType": "SWAP"})
@@ -85,7 +91,7 @@ def get_ticker(symbol):
         return data['data'][0]
     return None
 
-# ==================== 交易策略日志 ====================
+# ==================== 交易策略 ====================
 def generate_trading_strategy(symbol, ticker):
     price = float(ticker.get('last', 0))
     change = float(ticker.get('changePercent', 0))
@@ -111,49 +117,32 @@ def generate_trading_strategy(symbol, ticker):
 """
     return log.strip()
 
-# ==================== 主程序 ====================
+# ==================== 主程序（自动运行模式） ====================
 def main():
-    write_log("🚀 交易机器人启动 - 支持任意交易对")
-    pairs = get_all_trading_pairs()
+    write_log("🚀 OKX 交易机器人启动成功！")
+    write_log(f"当前时间: {datetime.now()}")
     
-    while True:
-        try:
-            cmd = input("\n输入命令 (查询 BTC、所有交易对、退出): ").strip()
-            cmd_lower = cmd.lower()
-            
-            if cmd_lower in ["退出", "exit", "q"]:
-                break
-            elif cmd_lower in ["所有交易对", "list", "all"]:
-                print("前30个交易对示例:", pairs[:30])
-            elif "查询" in cmd or "查" in cmd:
-                parts = cmd.replace("查询", "").replace("查", "").strip().upper()
-                symbol = parts
-                if not symbol.endswith("-SWAP"):
-                    symbol += "-SWAP"
-                if "-USDT" not in symbol and "-USD" not in symbol:
-                    symbol = symbol.replace("-SWAP", "-USDT-SWAP")
-                
-                write_log(f"正在查询: {symbol}")
-                ticker = get_ticker(symbol)
-                if ticker:
-                    # 实时行情
-                    print(f"\n✅ {symbol} 实时行情:")
-                    print(f"最新价: {ticker.get('last', 'N/A')}")
-                    print(f"涨跌幅: {ticker.get('changePercent', 'N/A')}%")
-                    print(f"24h成交量: {ticker.get('vol24h', 'N/A')}")
-                    
-                    # 交易策略 - 只显示一次
-                    strategy = generate_trading_strategy(symbol, ticker)
-                    print(strategy)
-                    write_log(strategy)  # 只写入文件，不重复打印
-                else:
-                    error_msg = f"❌ 无法获取 {symbol} 行情"
-                    print(error_msg)
-                    write_log(error_msg)
-            else:
-                print("未知命令，支持：查询 BTC、所有交易对、退出")
-        except Exception as e:
-            print(f"输入错误: {e}")
+    # 检查配置
+    if not all([API_KEY, API_SECRET, PASSPHRASE]):
+        write_log("❌ 错误: OKX API 配置不完整，请检查环境变量 OKX_API_KEY / OKX_SECRET / OKX_PASSPHRASE")
+        return
+    
+    pairs = get_all_trading_pairs()
+    if not pairs:
+        write_log("❌ 无法获取交易对")
+        return
+    
+    # 自动分析前 20 个交易对
+    write_log("开始自动分析...")
+    for symbol in pairs[:20]:
+        ticker = get_ticker(symbol)
+        if ticker:
+            strategy = generate_trading_strategy(symbol, ticker)
+            write_log(strategy)
+        time.sleep(0.5)  # 避免请求过快
+    
+    write_log("✅ 本轮分析完成，日志已保存")
+    write_log("提示: 生产环境建议改成定时任务或 Web 服务")
 
 if __name__ == "__main__":
     main()
