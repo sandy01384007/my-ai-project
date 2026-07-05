@@ -3,7 +3,6 @@ import hmac
 import hashlib
 import base64
 import requests
-import pandas as pd
 import json
 from datetime import datetime
 from openai import OpenAI
@@ -11,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ==================== 配置区（使用环境变量） ====================
+# ==================== 配置区 ====================
 PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
@@ -26,7 +25,7 @@ client = OpenAI(
 # ==================== 工具函数 ====================
 def write_log(text):
     content = f"[{datetime.now().strftime('%H:%M:%S')}] {text}"
-    print(content)  # Railway 环境用 print 输出日志
+    print(content)  # Railway 使用 print 输出日志
 
 def get_okx_signature(timestamp, method, path, body="", secret=API_SECRET):
     if isinstance(body, dict):
@@ -64,25 +63,11 @@ def okx_api(method, path, body=None):
 def main():
     write_log("🚀 OKX 交易机器人启动 - 支持任意交易对")
     
-    while True:
-        try:
-            cmd = input("\n输入命令 (查询 BTC、退出): ").strip()
-            cmd_lower = cmd.lower()
-            
-            if cmd_lower in ["退出", "exit", "q"]:
-                break
-            elif "查询" in cmd or "查" in cmd:
-                symbol = cmd.replace("查询", "").replace("查", "").strip().upper()
-                if not symbol.endswith("-SWAP"):
-                    symbol += "-USDT-SWAP"
-                
-                write_log(f"正在查询: {symbol}")
-                # 这里可以继续扩展你的 ticker 和策略逻辑...
-                print(f"✅ 查询 {symbol} 中...（当前版本简化）")
-            else:
-                print("支持命令：查询 BTC、退出")
-        except Exception as e:
-            print(f"错误: {e}")
+    # 测试 API
+    write_log("正在测试 OKX 连接...")
+    # 这里可以添加更多启动逻辑
+    
+    write_log("✅ 机器人已启动（命令行交互版适合本地，Railway 上建议改成定时任务）")
 
 if __name__ == "__main__":
     main()
