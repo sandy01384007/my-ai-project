@@ -1,6 +1,4 @@
-openai
-requests
-pandas
-python-dotenv
-fastapi
-uvicorn
+Flask==3.0.3
+gunicorn==23.0.0
+requests==2.31.0
+openai==1.35.0
